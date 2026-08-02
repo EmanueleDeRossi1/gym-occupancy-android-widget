@@ -1,6 +1,8 @@
 # 2Packd
 
-You wanted to get a 6 pack. But the gym is, unfortunately, 2 packed. **2Packd** is an Android home-screen widget that displays how busy your gym is in real-time, so you now have yet another reason to skip it.
+You wanted to get a 6 pack. But the gym is, unfortunately, 2 packed. 
+
+**2Packd** is an Android home-screen widget that displays how busy your gym is in real-time, so you now have yet another reason to skip it.
 
 It currently supports 1213 total gyms from the following gym chains: 
 
