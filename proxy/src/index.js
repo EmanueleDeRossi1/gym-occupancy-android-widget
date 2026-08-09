@@ -1,4 +1,5 @@
 import { OPERATORS } from './config.js';
+import { fetchFitXPredictions } from './scrapers/fitx-predictions.js';
 import {
   transformFitnessFirst,
   transformFitX,
@@ -273,7 +274,30 @@ export default {
             const rawData = await response.json();
 
             const transformer = OCCUPANCY_TRANSFORMERS[operatorId];
-            const transformedData = nullFutureOccupancy(transformer(rawData));
+            let transformedData = nullFutureOccupancy(transformer(rawData));
+
+            // For FitX: merge website predictions into future hour slots
+            if (operatorId === 'fitx') {
+              try {
+                const studioRes = await fetch(`https://mein.fitx.de/nox/public/v1/studios/${gymId}`, {
+                  headers: { 'x-tenant': 'fitx' }
+                });
+                if (studioRes.ok) {
+                  const studioData = await studioRes.json();
+                  const predictions = await fetchFitXPredictions(studioData.name);
+                  if (predictions) {
+                    transformedData = transformedData.map((slot, i) => {
+                      if (slot.isPrediction && predictions[i] != null) {
+                        return { ...slot, occupancy: predictions[i] };
+                      }
+                      return slot;
+                    });
+                  }
+                }
+              } catch (e) {
+                console.error('FitX predictions merge error:', e.message);
+              }
+            }
 
             return new Response(JSON.stringify(transformedData), {
                   headers: { 'content-type': 'application/json' }

@@ -3,13 +3,14 @@ function extractTimeFromISO(isoString) {
     return timeMatch ? timeMatch[1] : null;
 }
 
-// For future hours (occupancy not known yet) we return null.
+// Mark future hours with isPrediction flag while preserving forecast values
 export function nullFutureOccupancy(slots) {
     const currentIndex = slots.findIndex(s => s.isCurrent);
     if (currentIndex === -1) return slots;
-    return slots.map((slot, i) =>
-        i > currentIndex ? { ...slot, occupancy: null } : slot
-    );
+    return slots.map((slot, i) => ({
+        ...slot,
+        isPrediction: i > currentIndex
+    }));
 }
 
 export function transformFitnessFirstOccupancy(rawData) {
