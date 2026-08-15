@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -134,12 +135,9 @@ class WidgetConfigActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             GymPickerFlow(
-                onGymSelected = { gym ->
-                    saveGymId(this, appWidgetId, gym.id)
-                    saveOperatorId(this, appWidgetId, gym.operatorId)
-                    saveGymName(this, appWidgetId, gym.location)
-                    saveLogoUrl(this, appWidgetId, gym.logoUrl)
-                    logoFileForWidget(this, appWidgetId).delete()
+                appWidgetId = appWidgetId,
+                slotsToConfigure = listOf(1),
+                onComplete = {
                     setResult(Activity.RESULT_OK, Intent().apply {
                         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     })
@@ -162,9 +160,17 @@ class WidgetConfigActivity : ComponentActivity() {
 }
 
 @Composable
-fun GymPickerFlow(onGymSelected: (Gym) -> Unit) {
+fun GymPickerFlow(
+    appWidgetId: Int,
+    slotsToConfigure: List<Int> = listOf(1),
+    onComplete: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var currentSlotIndex by remember { mutableIntStateOf(0) }
     var gyms by remember { mutableStateOf<List<Gym>?>(null) }
     var selectedBrand by remember { mutableStateOf<Brand?>(null) }
+
+    val currentSlot = slotsToConfigure.getOrElse(currentSlotIndex) { slotsToConfigure.last() }
 
     LaunchedEffect(Unit) {
         gyms = fetchGyms()
@@ -189,7 +195,12 @@ fun GymPickerFlow(onGymSelected: (Gym) -> Unit) {
                         .map { (brand, list) -> Brand(brand, brand, list.first().logoUrl) }
                         .sortedBy { it.label }
                 }
-                BrandScreen(brands, onBrandSelected = { selectedBrand = it })
+                val titleText = when {
+                    slotsToConfigure.size > 1 -> "Select Gym ${currentSlotIndex + 1} of ${slotsToConfigure.size}"
+                    currentSlot > 1 -> "Select Gym $currentSlot"
+                    else -> "Select gym"
+                }
+                BrandScreen(brands, title = titleText, onBrandSelected = { selectedBrand = it })
             }
             else -> {
                 val filtered = remember(gyms, selectedBrand) {
@@ -199,7 +210,20 @@ fun GymPickerFlow(onGymSelected: (Gym) -> Unit) {
                     brand = selectedBrand!!,
                     gyms = filtered,
                     onBack = { selectedBrand = null },
-                    onGymSelected = onGymSelected
+                    onGymSelected = { gym ->
+                        saveGymId(context, appWidgetId, gym.id, slot = currentSlot)
+                        saveOperatorId(context, appWidgetId, gym.operatorId, slot = currentSlot)
+                        saveGymName(context, appWidgetId, gym.location, slot = currentSlot)
+                        saveLogoUrl(context, appWidgetId, gym.logoUrl, slot = currentSlot)
+                        logoFileForWidget(context, appWidgetId, slot = currentSlot).delete()
+
+                        if (currentSlotIndex + 1 < slotsToConfigure.size) {
+                            currentSlotIndex++
+                            selectedBrand = null
+                        } else {
+                            onComplete()
+                        }
+                    }
                 )
             }
         }
@@ -207,10 +231,10 @@ fun GymPickerFlow(onGymSelected: (Gym) -> Unit) {
 }
 
 @Composable
-fun BrandScreen(brands: List<Brand>, onBrandSelected: (Brand) -> Unit) {
+fun BrandScreen(brands: List<Brand>, title: String = "Select gym", onBrandSelected: (Brand) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         Text(
-            text = "Select gym",
+            text = title,
             color = TextPrimary,
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,

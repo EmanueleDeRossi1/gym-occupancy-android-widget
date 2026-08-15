@@ -80,88 +80,23 @@ private val LogoPath1Key = stringPreferencesKey("logo_path_1")
 private val LogoPath2Key = stringPreferencesKey("logo_path_2")
 private val LastUpdatedKey = stringPreferencesKey("last_updated")
 
-fun saveDualGymId(context: Context, appWidgetId: Int, slot: Int, gymId: String) {
-    val prefs = context.getSharedPreferences(context.packageName, Context.MODE_PRIVATE)
-    prefs.edit { putString("dual_gym_id_${slot}_$appWidgetId", gymId) }
-}
-
-fun saveDualOperatorId(context: Context, appWidgetId: Int, slot: Int, operatorId: String) {
-    val prefs = context.getSharedPreferences(context.packageName, Context.MODE_PRIVATE)
-    prefs.edit { putString("dual_operator_id_${slot}_$appWidgetId", operatorId) }
-}
-
-fun saveDualGymName(context: Context, appWidgetId: Int, slot: Int, gymName: String) {
-    val prefs = context.getSharedPreferences(context.packageName, Context.MODE_PRIVATE)
-    prefs.edit { putString("dual_gym_name_${slot}_$appWidgetId", gymName) }
-}
-
-fun saveDualLogoUrl(context: Context, appWidgetId: Int, slot: Int, logoUrl: String?) {
-    val prefs = context.getSharedPreferences(context.packageName, Context.MODE_PRIVATE)
-    prefs.edit {
-        if (logoUrl != null) putString("dual_logo_url_${slot}_$appWidgetId", logoUrl)
-        else remove("dual_logo_url_${slot}_$appWidgetId")
-    }
-}
-
-fun getDualGymId(context: Context, appWidgetId: Int, slot: Int): String? {
-    val prefs = context.getSharedPreferences(context.packageName, Context.MODE_PRIVATE)
-    return prefs.getString("dual_gym_id_${slot}_$appWidgetId", null)
-}
-
-fun getDualOperatorId(context: Context, appWidgetId: Int, slot: Int): String? {
-    val prefs = context.getSharedPreferences(context.packageName, Context.MODE_PRIVATE)
-    return prefs.getString("dual_operator_id_${slot}_$appWidgetId", null)
-}
-
-fun getDualGymName(context: Context, appWidgetId: Int, slot: Int): String? {
-    val prefs = context.getSharedPreferences(context.packageName, Context.MODE_PRIVATE)
-    return prefs.getString("dual_gym_name_${slot}_$appWidgetId", null)
-}
-
-fun getDualLogoUrl(context: Context, appWidgetId: Int, slot: Int): String? {
-    val prefs = context.getSharedPreferences(context.packageName, Context.MODE_PRIVATE)
-    return prefs.getString("dual_logo_url_${slot}_$appWidgetId", null)
-}
-
-fun dualLogoFileForWidget(context: Context, appWidgetId: Int, slot: Int): File =
-    File(context.filesDir, "dual_logo_${slot}_$appWidgetId.png")
-
-suspend fun fetchAndCacheDualLogo(context: Context, appWidgetId: Int, slot: Int): File? =
-    withContext(Dispatchers.IO) {
-        val logoUrl = getDualLogoUrl(context, appWidgetId, slot) ?: return@withContext null
-        val file = dualLogoFileForWidget(context, appWidgetId, slot)
-        try {
-            val request = Request.Builder().url(logoUrl).get().build()
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                val bytes = response.body?.bytes() ?: return@withContext null
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@withContext null
-                file.writeBytes(bytes)
-                file
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("GymWidget", "fetchAndCacheDualLogo error: ${e.message}")
-            null
-        }
-    }
-
 suspend fun loadDualOccupancyIntoState(context: Context, appWidgetId: Int) = coroutineScope {
     val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(appWidgetId)
 
-    val gymId1 = getDualGymId(context, appWidgetId, 1)
-    val operatorId1 = getDualOperatorId(context, appWidgetId, 1)
-    val gymName1 = getDualGymName(context, appWidgetId, 1)
-    val cachedLogo1 = dualLogoFileForWidget(context, appWidgetId, 1)
+    val gymId1 = getGymId(context, appWidgetId, slot = 1)
+    val operatorId1 = getOperatorId(context, appWidgetId, slot = 1)
+    val gymName1 = getGymName(context, appWidgetId, slot = 1)
+    val cachedLogo1 = logoFileForWidget(context, appWidgetId, slot = 1)
 
-    val gymId2 = getDualGymId(context, appWidgetId, 2)
-    val operatorId2 = getDualOperatorId(context, appWidgetId, 2)
-    val gymName2 = getDualGymName(context, appWidgetId, 2)
-    val cachedLogo2 = dualLogoFileForWidget(context, appWidgetId, 2)
+    val gymId2 = getGymId(context, appWidgetId, slot = 2)
+    val operatorId2 = getOperatorId(context, appWidgetId, slot = 2)
+    val gymName2 = getGymName(context, appWidgetId, slot = 2)
+    val cachedLogo2 = logoFileForWidget(context, appWidgetId, slot = 2)
 
     val json1Deferred = async { if (gymId1 != null && operatorId1 != null) fetchOccupancyRaw(operatorId1, gymId1) else null }
     val json2Deferred = async { if (gymId2 != null && operatorId2 != null) fetchOccupancyRaw(operatorId2, gymId2) else null }
-    val logo1Deferred = async { if (cachedLogo1.exists()) cachedLogo1 else fetchAndCacheDualLogo(context, appWidgetId, 1) }
-    val logo2Deferred = async { if (cachedLogo2.exists()) cachedLogo2 else fetchAndCacheDualLogo(context, appWidgetId, 2) }
+    val logo1Deferred = async { if (cachedLogo1.exists()) cachedLogo1 else fetchAndCacheLogo(context, appWidgetId, slot = 1) }
+    val logo2Deferred = async { if (cachedLogo2.exists()) cachedLogo2 else fetchAndCacheLogo(context, appWidgetId, slot = 2) }
 
     val json1 = json1Deferred.await()
     val json2 = json2Deferred.await()
@@ -276,28 +211,6 @@ private fun DualWidgetContent(
             .background(R.color.widget_background)
             .padding(10.dp)
     ) {
-        // Header with title and refresh button
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Vertical.CenterVertically
-        ) {
-            Text(
-                text = "Gym Occupancy",
-                style = TextStyle(color = ColorProvider(R.color.widget_text_secondary), fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                modifier = GlanceModifier.defaultWeight()
-            )
-            Text(
-                text = lastUpdatedText,
-                style = TextStyle(color = ColorProvider(R.color.widget_text_secondary), fontSize = 11.sp),
-                modifier = GlanceModifier
-                    .background(ImageProvider(R.drawable.refresh_button_bg))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                    .clickable(refreshAction)
-            )
-        }
-
-        Spacer(modifier = GlanceModifier.height(6.dp))
-
         if (isWide) {
             Row(
                 modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
@@ -315,7 +228,9 @@ private fun DualWidgetContent(
                         dayUtilization = dayUtilization1,
                         logoFile = logoFile1,
                         size = size,
-                        density = density
+                        density = density,
+                        lastUpdatedText = lastUpdatedText,
+                        refreshAction = refreshAction
                     )
                 }
 
@@ -342,7 +257,9 @@ private fun DualWidgetContent(
                         dayUtilization = dayUtilization2,
                         logoFile = logoFile2,
                         size = size,
-                        density = density
+                        density = density,
+                        lastUpdatedText = lastUpdatedText,
+                        refreshAction = refreshAction
                     )
                 }
             }
@@ -362,7 +279,9 @@ private fun DualWidgetContent(
                         dayUtilization = dayUtilization1,
                         logoFile = logoFile1,
                         size = size,
-                        density = density
+                        density = density,
+                        lastUpdatedText = lastUpdatedText,
+                        refreshAction = refreshAction
                     )
                 }
 
@@ -386,7 +305,9 @@ private fun DualWidgetContent(
                         dayUtilization = dayUtilization2,
                         logoFile = logoFile2,
                         size = size,
-                        density = density
+                        density = density,
+                        lastUpdatedText = lastUpdatedText,
+                        refreshAction = refreshAction
                     )
                 }
             }
@@ -400,7 +321,9 @@ private fun SingleGymPanel(
     dayUtilization: DayUtilization?,
     logoFile: File?,
     size: androidx.compose.ui.unit.DpSize,
-    density: Float
+    density: Float,
+    lastUpdatedText: String,
+    refreshAction: androidx.glance.action.Action
 ) {
     val occupancyText = when {
         dayUtilization?.isClosed == true -> "Closed"
@@ -416,39 +339,55 @@ private fun SingleGymPanel(
         modifier = GlanceModifier.fillMaxSize(),
         verticalAlignment = Alignment.Vertical.Top
     ) {
+        // Top row: gym name | logo
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.Vertical.CenterVertically
         ) {
+            Text(
+                text = gymName,
+                style = TextStyle(color = ColorProvider(R.color.widget_text_primary), fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                maxLines = 1,
+                modifier = GlanceModifier.defaultWeight()
+            )
             if (logoBitmap != null) {
+                Spacer(modifier = GlanceModifier.width(4.dp))
                 Image(
                     provider = ImageProvider(logoBitmap),
                     contentDescription = gymName,
                     contentScale = ContentScale.Fit,
-                    modifier = GlanceModifier.height(24.dp).width(24.dp)
+                    modifier = GlanceModifier.height(20.dp).width(20.dp)
                 )
-                Spacer(modifier = GlanceModifier.width(6.dp))
             }
+        }
+
+        Spacer(modifier = GlanceModifier.height(4.dp))
+
+        // Occupancy % (left) and refresh button (right under logo)
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Vertical.CenterVertically
+        ) {
             Text(
-                text = gymName,
-                style = TextStyle(color = ColorProvider(R.color.widget_text_primary), fontSize = 14.sp, fontWeight = FontWeight.Bold),
-                maxLines = 1,
-                modifier = GlanceModifier.defaultWeight()
+                text = occupancyText,
+                style = TextStyle(color = ColorProvider(R.color.widget_text_primary), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            )
+            Spacer(modifier = GlanceModifier.defaultWeight())
+            Text(
+                text = lastUpdatedText,
+                style = TextStyle(color = ColorProvider(R.color.widget_text_secondary), fontSize = 10.sp),
+                modifier = GlanceModifier
+                    .background(ImageProvider(R.drawable.refresh_button_bg))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .clickable(refreshAction)
             )
         }
 
-        Spacer(modifier = GlanceModifier.height(2.dp))
-
-        Text(
-            text = occupancyText,
-            style = TextStyle(color = ColorProvider(R.color.widget_text_primary), fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        )
-
         if (dayUtilization != null) {
-            Spacer(modifier = GlanceModifier.height(4.dp))
+            Spacer(modifier = GlanceModifier.height(2.dp))
             val chartW = (size.width.value * density * 0.45f).toInt()
-            val chartH = (size.height.value * density * 0.4f).toInt()
-            val chartBitmap = createDualOccupancyChart(dayUtilization, chartW, chartH)
+            val chartH = (size.height.value * density * 0.65f).toInt()
+            val chartBitmap = createOccupancyChart(dayUtilization, chartW, chartH, barSpacing = 3f, cornerRadius = 2.5f)
             if (chartBitmap != null) {
                 Image(
                     provider = ImageProvider(chartBitmap),
@@ -460,75 +399,16 @@ private fun SingleGymPanel(
             Row(modifier = GlanceModifier.fillMaxWidth()) {
                 Text(
                     text = dayUtilization.earliestStartTime.take(5),
-                    style = TextStyle(color = ColorProvider(R.color.widget_text_secondary), fontSize = 10.sp)
+                    style = TextStyle(color = ColorProvider(R.color.widget_text_secondary), fontSize = 9.sp)
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
                 Text(
                     text = dayUtilization.latestEndTime.take(5),
-                    style = TextStyle(color = ColorProvider(R.color.widget_text_secondary), fontSize = 10.sp)
+                    style = TextStyle(color = ColorProvider(R.color.widget_text_secondary), fontSize = 9.sp)
                 )
             }
         }
     }
-}
-
-private fun createDualOccupancyChart(dayUtilization: DayUtilization, width: Int, height: Int): Bitmap? {
-    if (width <= 0 || height <= 0 || dayUtilization.totalSlots == 0) return null
-
-    val bitmap = createBitmap(width, height)
-    val canvas = Canvas(bitmap)
-
-    val barSpacing = 3f
-    val barWidth = maxOf(1f, (width.toFloat() / dayUtilization.totalSlots) - barSpacing)
-    val minBarHeight = 4f
-    val cornerRadius = 2.5f
-
-    val currentIndex = dayUtilization.slots.indexOfFirst { it.isCurrent }
-
-    for ((i, slot) in dayUtilization.slots.withIndex()) {
-        val left = i * (barWidth + barSpacing)
-        val right = left + barWidth
-        val isFuture = currentIndex != -1 && i > currentIndex
-
-        if (slot.occupancy != null && slot.occupancy > 0) {
-            val occupancy = slot.occupancy
-            val barHeight = maxOf((occupancy * height / 100f), minBarHeight)
-            val top = height - barHeight
-
-            val (startAlpha, endAlpha, baseColor) = when {
-                i < currentIndex -> Triple(220, 50, "#6B6B6B".toColorInt())
-                i == currentIndex -> Triple(240, 80, getOccupancyColor(occupancy))
-                else -> Triple(200, 40, "#9E9E9E".toColorInt()) // Light gray matching single gym widget
-            }
-
-            val r = Color.red(baseColor)
-            val g = Color.green(baseColor)
-            val b = Color.blue(baseColor)
-
-            val paint = Paint().apply {
-                style = Paint.Style.FILL
-                isAntiAlias = true
-                shader = LinearGradient(
-                    0f, top, 0f, height.toFloat(),
-                    Color.argb(startAlpha, r, g, b),
-                    Color.argb(endAlpha, r, g, b),
-                    Shader.TileMode.CLAMP
-                )
-            }
-            canvas.drawRoundRect(left, top, right, height.toFloat(), cornerRadius, cornerRadius, paint)
-        } else {
-            // Future hour baseline placeholder
-            val top = height - minBarHeight
-            val paint = Paint().apply {
-                style = Paint.Style.FILL
-                isAntiAlias = true
-                color = if (isFuture) Color.argb(45, 158, 158, 158) else Color.argb(35, 255, 255, 255)
-            }
-            canvas.drawRoundRect(left, top, right, height.toFloat(), cornerRadius, cornerRadius, paint)
-        }
-    }
-
-    return bitmap
 }
 
 class DualGymOccupancyReceiver : GlanceAppWidgetReceiver() {

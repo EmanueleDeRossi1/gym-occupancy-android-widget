@@ -97,69 +97,7 @@ class RefreshAction : ActionCallback {
     }
 }
 
-fun getOccupancyColor(occupancy: Int): Int {
-    return when {
-        occupancy < 50 -> blendColors("#10B981", "#F59E0B", occupancy / 50f)
-        else -> blendColors("#F59E0B", "#EF4444", (occupancy - 50) / 50f)
-    }
-}
 
-fun blendColors(color1: String, color2: String, ratio: Float): Int {
-    val c1 = color1.toColorInt()
-    val c2 = color2.toColorInt()
-    val r = (Color.red(c1) * (1 - ratio) + Color.red(c2) * ratio).toInt()
-    val g = (Color.green(c1) * (1 - ratio) + Color.green(c2) * ratio).toInt()
-    val b = (Color.blue(c1) * (1 - ratio) + Color.blue(c2) * ratio).toInt()
-    return Color.rgb(r, g, b)
-}
-
-fun createOccupancyChart(dayUtilization: DayUtilization, width: Int, height: Int): Bitmap? {
-    if (width <= 0 || height <= 0 || dayUtilization.totalSlots == 0) return null
-
-    val bitmap = createBitmap(width, height)
-    val canvas = Canvas(bitmap)
-    canvas.drawColor("#353535".toColorInt())
-
-    val barSpacing = 6f
-    val barWidth = (width.toFloat() / dayUtilization.totalSlots) - barSpacing
-    val minBarHeight = 4f
-    val cornerRadius = 3f
-
-    val currentIndex = dayUtilization.slots.indexOfFirst { it.isCurrent }
-
-    for ((i, slot) in dayUtilization.slots.withIndex()) {
-        // null occupancy = unknown future hour → leave the column empty
-        val occupancy = slot.occupancy ?: continue
-        val left = i * (barWidth + barSpacing)
-        val right = left + barWidth
-        val barHeight = maxOf((occupancy * height / 100).toFloat(), minBarHeight)
-        val top = height - barHeight
-
-        val baseColor = when {
-            i < currentIndex -> "#6B6B6B".toColorInt() // medium grey (visible on dark bg)
-            i == currentIndex -> getOccupancyColor(occupancy)
-            else ->  "#9E9E9E".toColorInt() // light gray
-        }
-
-        val r = Color.red(baseColor)
-        val g = Color.green(baseColor)
-        val b = Color.blue(baseColor)
-
-        val paint = Paint().apply {
-            style = Paint.Style.FILL
-            isAntiAlias = true
-            shader = LinearGradient(
-                0f, top, 0f, height.toFloat(),
-                Color.argb(200, r, g, b),
-                Color.argb(40, r, g, b),
-                Shader.TileMode.CLAMP
-            )
-        }
-        canvas.drawRoundRect(left, top, right, height.toFloat(), cornerRadius, cornerRadius, paint)
-    }
-
-    return bitmap
-}
 
 class GymOccupancyWidget : GlanceAppWidget() {
 
